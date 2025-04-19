@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">Diploma</string>
+    <string name="sign_up">Sign Up</string>
+    <string name="already_have_account">Already have account?</string>
+    <string name="sign_in">Sign In</string>
+    <string name="welcome_image_description">Already have account?</string>
 </resources>
