@@ -68,7 +68,7 @@ fun HelpDialog(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
-                    "2. Держи руку перед камерой на расстоянии 30-50 см;",
+                    "2. Держи руку перед камерой на расстоянии 30-50 см в центральной части кадра;",
                     style = MaterialTheme.typography.bodyMedium
                 )
 

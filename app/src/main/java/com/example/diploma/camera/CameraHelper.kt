@@ -57,8 +57,6 @@ class CameraHelper(
         val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         val cameraIdList = cameraManager.cameraIdList
 
-        //Log.d(TAG, "Доступные камеры: ${cameraIdList.joinToString()}")
-
         // Если камеры не доступны
         if (cameraIdList.isEmpty()) {
             Log.e(TAG, "Нет доступных камер на этом устройстве")
@@ -89,8 +87,6 @@ class CameraHelper(
                     CameraSelector.LENS_FACING_BACK
                 }
             }
-
-            Log.d(TAG, "Камера по умолчанию установлена: $currentCameraSelector")
         }
     }
 
@@ -135,7 +131,6 @@ class CameraHelper(
                         .build()
 
                     try {
-                        // Привязываем use cases к lifecycle
                         camera = provider.bindToLifecycle(
                             lifecycleOwner,
                             selector,
@@ -191,10 +186,7 @@ class CameraHelper(
         }
 
         try {
-            //Log.d(TAG, "Камера переключается с $currentCameraSelector")
-
             shutdownCamera()
-
             // Задержка для освобождения ресурсов
             delay(500)
 
@@ -203,8 +195,6 @@ class CameraHelper(
             } else {
                 CameraSelector.LENS_FACING_FRONT
             }
-
-            //Log.d(TAG, "Переключение на камеру: $newCameraSelector")
 
             // Запуск новой камеры
             val result = startCamera(lifecycleOwner, surfaceProvider, newCameraSelector)
@@ -241,7 +231,6 @@ class CameraHelper(
             imageCapture = null
             imageAnalysis = null
 
-            //Log.d(TAG, "Выключение камеры завершено")
         } catch (e: Exception) {
             Log.e(TAG, "Ошибка при выключении камеры: ${e.message}")
             e.printStackTrace()
@@ -283,9 +272,7 @@ class CameraHelper(
             cameraProvider = null
             frameListener = null
 
-            //Log.d(TAG, "Camera helper отключен")
         } catch (e: Exception) {
-            //Log.e(TAG, "Ошибка при выключении: ${e.message}")
             e.printStackTrace()
         }
     }
@@ -305,11 +292,9 @@ class CameraHelper(
                 imageProxy.close()
                 return
             }
-
             try {
                 frameListener?.invoke(imageProxy) ?: imageProxy.close()
             } catch (e: Exception) {
-                Log.e(TAG, "Ошибка анализа изображения: ${e.message}")
                 try {
                     imageProxy.close()
                 } catch (e2: Exception) {

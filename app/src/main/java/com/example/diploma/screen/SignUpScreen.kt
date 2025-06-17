@@ -1,6 +1,5 @@
 package com.example.diploma.screen
 
-import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -150,7 +149,7 @@ fun SignUpScreen(navController: NavController) {
         OutlinedTextField(
             value = email,
             onValueChange = {
-                email = it
+                email = it.lowercase()
                 showError = false
             },
             label = {

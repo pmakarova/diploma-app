@@ -32,10 +32,11 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import com.example.diploma.GesturePhaseDetector
 import com.example.diploma.dialog.HelpDialog
 import com.example.diploma.LogoutDialog
 import com.example.diploma.api.ServerConfigHelper
-import com.example.diploma.api.ServerSettingsDialog
+import com.example.diploma.dialog.ServerSettingsDialog
 import com.example.diploma.api.SignLanguageApiService
 import com.example.diploma.camera.CameraHelper
 import com.example.diploma.hands.HandLandmarkHelper
@@ -97,6 +98,8 @@ fun CameraScreen(
     val overlayViewState = remember { mutableStateOf<OverlayView?>(null) }
 
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
+
+//    val isRecognitionActive = remember { mutableStateOf(true) }
 
     // Обработка результата выхода из системы
     LaunchedEffect(logoutResult) {
@@ -165,7 +168,8 @@ fun CameraScreen(
                             coroutineScope = coroutineScope,
                             detectedGesture = detectedGesture,
                             gestureConfidence = gestureConfidence,
-                            cameraFacing = cameraFacing.intValue
+                            cameraFacing = cameraFacing.intValue,
+//                            isRecognitionActive = isRecognitionActive
                         )
                     }
                 }
@@ -286,7 +290,7 @@ fun CameraScreen(
                     confidence = gestureConfidence.floatValue,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = 100.dp)
+                        .padding(bottom = 130.dp)
                 )
             }
 
@@ -308,9 +312,6 @@ fun CameraScreen(
                         try {
                             // Очищаем overlay перед переключением камеры
                             overlayViewState.value?.clear()
-
-                            // Очищаем историю кадров при переключении камеры
-                            clearFrameHistory()
 
                             // Переключаем камеру и получаем результат
                             val success = cameraHelper.toggleCamera(
@@ -455,7 +456,7 @@ fun TopAppBar(
 ) {
 
     Row(
-        modifier = Modifier.fillMaxWidth().height(110.dp).padding(15.dp),
+        modifier = Modifier.fillMaxWidth().height(120.dp).padding(15.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -474,7 +475,7 @@ fun TopAppBar(
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = if (serverConnected) "Сервер подключен" else "Сервер недоступен",
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onBackground,
                 fontWeight = FontWeight.Bold,
                 fontSize = 14.sp
             )
@@ -535,7 +536,7 @@ fun DetectedGestureCard(
             .fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primary
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
         )
     ) {
         Column(
@@ -644,7 +645,6 @@ private fun processCameraFrame(
         imageProxy.close()
     }
 }
-
 /**
  * Обработка результатов распознавания жестов рук и отправка на сервер.
  * @param resultBundle Пакет результатов распознавания жестов рук
@@ -654,6 +654,10 @@ private fun processCameraFrame(
  * @param gestureConfidence Переменная для хранения уверенности распознавания
  * @param cameraFacing Текущее направление камеры (фронтальная/задняя)
  */
+
+/**
+ * Обновленная обработка жестов для поддержки 20 кадров
+ */
 private fun processHandLandmarks(
     resultBundle: HandLandmarkHelper.ResultBundle,
     apiService: SignLanguageApiService,
@@ -662,331 +666,84 @@ private fun processHandLandmarks(
     gestureConfidence: MutableState<Float>,
     cameraFacing: Int = CameraSelector.LENS_FACING_BACK
 ) {
-    // Если жесты рук не обнаружены, выходим
-    if (resultBundle.results.isEmpty() || resultBundle.results.first().landmarks().isEmpty()) {
-        Log.d("CameraScreen", "No hand landmarks detected")
+    // Проверка на пустой кадр
+    val isEmpty = resultBundle.results.isEmpty() || resultBundle.results.first().landmarks().isEmpty()
+
+    if (isEmpty) {
+        val emptyFeatures = List(126) { 0f }
+        val timestamp = System.currentTimeMillis()
+        val (gestureCompleted, frames) = GesturePhaseDetector.processFrame(emptyFeatures, timestamp)
+
+        if (gestureCompleted && frames.isNotEmpty()) {
+            handleCompletedGesture(frames, apiService, coroutineScope, detectedGesture, gestureConfidence)
+        }
         return
     }
 
-    // Данные о жестах рук
     val handLandmarkResult = resultBundle.results.first()
-
-    // Логируем количество обнаруженных рук
-    val handsCount = handLandmarkResult.landmarks().size
-    Log.d("CameraScreen", "Обнаружено $handsCount рук(и)")
-
-    // Используется ли фронтальная камера
     val isFrontCamera = cameraFacing == CameraSelector.LENS_FACING_FRONT
-
-    // Конвертируем координаты жестов в формат для API, учитывая ориентацию камеры
     val features = extractFeaturesFromLandmarks(handLandmarkResult, isFrontCamera)
 
-    // Пропуск, если список координат пуст или содержит только нули
     if (features.isEmpty() || features.all { it == 0f }) {
-        Log.d("CameraScreen", "Пустой список координат, пропуск")
         return
     }
 
-    // Если это набор из 126 признаков (один кадр), добавляем его в историю
     if (features.size == 126) {
-        // Добавляем текущий кадр в историю
-        FrameHistory.addFrame(features)
+        val timestamp = System.currentTimeMillis()
+        val (gestureCompleted, frames) = GesturePhaseDetector.processFrame(features, timestamp)
 
-        // Проверяем, готова ли последовательность для отправки
-        val isReady = FrameHistory.isSequenceReady()
-        if (isReady) {
-            Log.d("CameraScreen", "Последовательность кадров готова для отправки")
+        if (gestureCompleted && frames.isNotEmpty()) {
+            handleCompletedGesture(frames, apiService, coroutineScope, detectedGesture, gestureConfidence)
         }
     }
+}
 
-    // Отправляем координаты на сервер
+/**
+ * Обрабатывает полностью завершенный жест (из 20 кадров)
+ */
+private fun handleCompletedGesture(
+    frames: List<List<Float>>,
+    apiService: SignLanguageApiService,
+    coroutineScope: CoroutineScope,
+    detectedGesture: MutableState<String>,
+    gestureConfidence: MutableState<Float>
+) {
     coroutineScope.launch(Dispatchers.IO) {
         try {
-            // Получаем последовательность кадров, если она готова
-            val sequenceToSend = getFrameSequence()
+            val flatSequence = frames.flatten()
+            Log.d("GestureProcessing", "🚀 Распознавание жеста (${frames.size} кадров)")
 
-            if (sequenceToSend.isNotEmpty()) {
-                Log.d("CameraScreen", "Отправка последовательности из ${sequenceToSend.size / 126} кадров")
-                val success = apiService.sendFeatures(sequenceToSend)
+            // Один запрос - один результат!
+            val result = apiService.recognizeGesture(flatSequence)
 
-                if (success) {
-                    // Получаем результат распознавания с сервера
-                    val translation = apiService.getTranslation()
+            withContext(Dispatchers.Main) {
+                if (result.success) {
+                    Log.d("GestureProcessing", "✅ Жест: ${result.gesture} (${result.confidence})")
 
-                    // Update UI with detected gesture
-                    if (translation.gesture.isNotEmpty()) {
-                        withContext(Dispatchers.Main) {
-                            detectedGesture.value = translation.gesture
-                            gestureConfidence.value = translation.confidence
-                            Log.d("CameraScreen", "Распознан жест: ${detectedGesture.value}, уверенность: ${gestureConfidence.value}")
+                    detectedGesture.value = result.gesture
+                    gestureConfidence.value = result.confidence
 
-                            // Очистка жеста после задержки
-                            launch {
-                                delay(3000)
-                                if (detectedGesture.value == translation.gesture) {
-                                    detectedGesture.value = ""
-                                    gestureConfidence.value = 0f
-                                }
-                            }
+                    // Автоочистка через 3 секунды
+                    launch {
+                        delay(3000)
+                        if (detectedGesture.value == result.gesture) {
+                            detectedGesture.value = ""
+                            gestureConfidence.value = 0f
                         }
                     }
-                }
-            } else {
-                if (features.size == 1260) {
-                    //Log.d("CameraScreen", "Отправка набора из 1260 признаков (одиночная последовательность)")
-                    val success = apiService.sendFeatures(features)
-
-                    if (success) {
-                        // Получаем результат распознавания с сервера
-                        val translation = apiService.getTranslation()
-
-                        // Обновляем UI с распознанным жестом
-                        if (translation.gesture.isNotEmpty()) {
-                            withContext(Dispatchers.Main) {
-                                detectedGesture.value = translation.gesture
-                                gestureConfidence.value = translation.confidence
-                                Log.d("CameraScreen", "Распознан жест: ${detectedGesture.value}, уверенность: ${gestureConfidence.value}")
-
-                                // Очистка жеста после задержки
-                                launch {
-                                    delay(3000)
-                                    if (detectedGesture.value == translation.gesture) {
-                                        detectedGesture.value = ""
-                                        gestureConfidence.value = 0f
-                                    }
-                                }
-                            }
-                        }
-                    }
+                } else {
+                    Log.d("GestureProcessing", "❌ Не распознан: ${result.error}")
                 }
             }
         } catch (e: Exception) {
-            Log.e("CameraScreen", "Ошибка отправки координат на сервер: ${e.message}")
-            e.printStackTrace()
+            Log.e("GestureProcessing", "Ошибка: ${e.message}")
         }
     }
-}
-
-/**
- * Объект для хранения и обработки истории кадров.
- * Используется для накопления последовательностей кадров перед отправкой на сервер.
- * Добавляет вариативность и фильтрацию кадров для улучшения качества распознавания.
- */
-private object FrameHistory {
-    private const val MAX_FRAMES = 10 // максимальное количество кадров в последовательности
-    private val frameHistory = mutableListOf<List<Float>>() // список сохраненных кадров
-    private val lock = Any() // объект блокировки для безопасного доступа из разных потоков
-
-    // Увеличенный интервал времени для сбора последовательности
-    private const val COLLECTION_TIMEOUT = 5000L // таймаут сбора кадров (5 секунд)
-    private const val MIN_FRAME_DIFFERENCE = 0.05f // минимальная разница между кадрами для учета изменений
-
-    private var lastFrameTime = System.currentTimeMillis() // время последнего добавленного кадра
-    private var sequenceStartTime = System.currentTimeMillis() // время начала сбора последовательности
-
-    /**
-     * Вычисляет различие между двумя кадрами.
-     * Учитывает ненулевые координаты с большим весом для точного определения движения.
-     * @param frame1 Первый кадр для сравнения
-     * @param frame2 Второй кадр для сравнения
-     * @return Значение различия (0-1)
-     */
-    private fun calculateFrameDifference(frame1: List<Float>, frame2: List<Float>): Float {
-        if (frame1.size != frame2.size) return 1.0f
-
-        var totalDiff = 0.0f
-        var nonZeroCount = 0
-
-        // Проверяем все координаты, уделяя особое внимание ненулевым
-        for (i in frame1.indices) {
-            val diff = abs(frame1[i] - frame2[i])
-
-            // Если оба значения не равны нулю, считаем разницу с большим весом
-            if (frame1[i] != 0f || frame2[i] != 0f) {
-                totalDiff += diff * 1.5f // Увеличиваем вес для ненулевых значений
-                nonZeroCount++
-            } else {
-                totalDiff += diff
-            }
-        }
-
-        // Если нет ненулевых координат, это странно, считаем различие нулевым
-        if (nonZeroCount == 0) return 0.0f
-
-        // Вычисляем среднее различие по ненулевым координатам
-        return totalDiff / (nonZeroCount + 1)
-    }
-
-    /**
-     * Добавляет случайный шум к кадру для увеличения вариативности.
-     * Это помогает избежать проблем с идентичными кадрами.
-     * @param frame Исходный кадр
-     * @return Кадр с шумом
-     */
-    private fun addNoiseToFrame(frame: List<Float>): List<Float> {
-        val noisyFrame = mutableListOf<Float>()
-
-        for (value in frame) {
-            // Добавляем шум только к ненулевым значениям, чтобы не создавать ложные точки
-            if (value != 0f) {
-                // Добавляем случайный шум до 2% от значения
-                val noise = value * (Math.random() * 0.04f - 0.02f).toFloat()
-                noisyFrame.add(value + noise)
-            } else {
-                noisyFrame.add(0f)
-            }
-        }
-        return noisyFrame
-    }
-
-    /**
-     * Добавляет новый кадр в историю.
-     * Учитывает различия между кадрами и время для обеспечения вариативности данных.
-     * @param frame Кадр для добавления (список 126 координат)
-     */
-    fun addFrame(frame: List<Float>) {
-        synchronized(lock) {
-            val currentTime = System.currentTimeMillis()
-
-            // Если прошло слишком много времени с начала сбора последовательности,
-            // начинаем новую последовательность
-            if (currentTime - sequenceStartTime > COLLECTION_TIMEOUT) {
-                frameHistory.clear()
-                sequenceStartTime = currentTime
-                Log.d("FrameHistory", "Начало новой последовательности (тайм-аут)")
-            }
-
-            // Проверяем, отличается ли новый кадр от последнего сохраненного
-            val isDifferentFrame = if (frameHistory.isEmpty()) {
-                true
-            } else {
-                val lastFrame = frameHistory.last()
-                val difference = calculateFrameDifference(lastFrame, frame)
-                Log.d("FrameHistory", "Разница между кадрами: $difference (мин. порог: $MIN_FRAME_DIFFERENCE)")
-                difference > MIN_FRAME_DIFFERENCE
-            }
-
-            // Добавляем кадр только если он отличается или прошло достаточно времени
-            if (isDifferentFrame || (currentTime - lastFrameTime > 300)) {
-                // Добавляем шум к кадру для улучшения вариативности
-                val noisyFrame = addNoiseToFrame(frame)
-
-                frameHistory.add(noisyFrame)
-                lastFrameTime = currentTime
-
-                // Ограничиваем размер истории
-                if (frameHistory.size > MAX_FRAMES) {
-                    frameHistory.removeAt(0)
-                }
-                //Log.d("FrameHistory", "Кадр добавлен, размер истории: ${frameHistory.size}")
-            } else {
-                //Log.d("FrameHistory", "Кадр пропущен (слишком похож на предыдущий)")
-            }
-        }
-    }
-
-    /**
-     * Возвращает готовую последовательность кадров для отправки на сервер.
-     * Обеспечивает нужную длину и вариативность последовательности.
-     * @return Список координат из всех кадров или пустой список, если последовательность не готова
-     */
-    fun getSequence(): List<Float> {
-        synchronized(lock) {
-            // Требуем хотя бы 5 разных кадров перед отправкой
-            if (frameHistory.size < 5) {
-                return emptyList()
-            }
-
-            // Создаем последовательность из всех кадров с различиями
-            val enhancedFrames = mutableListOf<List<Float>>()
-
-            // Добавляем все имеющиеся кадры
-            enhancedFrames.addAll(frameHistory)
-
-            // Если кадров меньше MAX_FRAMES, добавляем модифицированные копии последних кадров
-            while (enhancedFrames.size < MAX_FRAMES) {
-                val baseFrame = frameHistory.last()
-                val modifiedFrame = addNoiseToFrame(baseFrame)
-                enhancedFrames.add(modifiedFrame)
-            }
-
-            // Проверяем различия для всех кадров
-            var totalDifference = 0.0f
-            for (i in 1 until enhancedFrames.size) {
-                val diff = calculateFrameDifference(enhancedFrames[i-1], enhancedFrames[i])
-                totalDifference += diff
-            }
-
-            val avgDifference = totalDifference / (enhancedFrames.size - 1)
-            Log.d("FrameHistory", "Среднее различие между кадрами в последовательности: $avgDifference")
-
-            // Создаем плоский список из всех кадров
-            val sequence = mutableListOf<Float>()
-            for (frame in enhancedFrames) {
-                sequence.addAll(frame)
-            }
-
-            // Очищаем историю после использования, но сохраняем последние кадры для сравнения
-            val lastFrames = if (frameHistory.size >= 2) {
-                frameHistory.takeLast(2)
-            } else if (frameHistory.isNotEmpty()) {
-                listOf(frameHistory.last())
-            } else {
-                emptyList()
-            }
-
-            frameHistory.clear()
-            frameHistory.addAll(lastFrames)
-
-            sequenceStartTime = System.currentTimeMillis()
-
-            Log.d("FrameHistory", "Возвращаем последовательность из ${sequence.size} значений (${enhancedFrames.size} кадров)")
-            return sequence
-        }
-    }
-
-    /**
-     * Проверяет, готова ли последовательность для отправки на сервер.
-     * @return true, если собрано достаточно кадров
-     */
-    fun isSequenceReady(): Boolean {
-        synchronized(lock) {
-            return frameHistory.size >= 5
-        }
-    }
-
-    /**
-     * Очищает историю кадров.
-     * Вызывается при переключении камеры или других событиях, требующих сброса.
-     */
-    fun clear() {
-        synchronized(lock) {
-            frameHistory.clear()
-            sequenceStartTime = System.currentTimeMillis()
-            //Log.d("FrameHistory", "История кадров очищена")
-        }
-    }
-}
-
-/**
- * Получает готовую последовательность кадров для отправки на сервер.
- * @return Список координат, подготовленный для отправки
- */
-private fun getFrameSequence(): List<Float> {
-    return FrameHistory.getSequence()
-}
-
-/**
- * Очищает историю кадров.
- * Вызывается при переключении камеры или других событиях, требующих сброса.
- */
-private fun clearFrameHistory() {
-    FrameHistory.clear()
 }
 
 /**
  * Извлекает координаты ключевых точек рук из результатов распознавания.
- * Преобразует внутренний формат MediaPipe в формат для API сервера с нормализацией.
+ * Преобразует формат MediaPipe в формат для API сервера с нормализацией.
  *
  * @param handLandmarkResult Результат распознавания жестов рук
  * @param isFrontCamera Флаг использования фронтальной камеры (для обработки зеркалирования)

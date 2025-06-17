@@ -106,10 +106,8 @@ class HandLandmarkHelper(
                     .message
             )
         } catch (e: RuntimeException) {
-            // Если используемая модель не поддерживает GPU
             handLandmarkHelperListener?.onError(
-                "Не удалось инициализировать Hand Landmark. Смотри журналы ошибок для " +
-                        "подробностей", GPU_ERROR
+                "Не удалось инициализировать Hand Landmark.", GPU_ERROR
             )
             Log.e(
                 TAG,
@@ -230,19 +228,17 @@ class HandLandmarkHelper(
             try {
                 imageProxy.close()
             } catch (e2: Exception) {
-                // Игнорируем ошибки при закрытии
+                //
             }
         }
     }
 
     /**
      * Запускает определение ключевых точек рук с использованием MediaPipe Hand Landmark API
-     * в асинхронном режиме
      */
     @VisibleForTesting
     fun detectAsync(mpImage: MPImage, frameTime: Long) {
         handLandmark?.detectAsync(mpImage, frameTime)
-        // Результат определения ключевых точек будет возвращен в функции returnLivestreamResult
     }
 
     /**

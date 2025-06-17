@@ -2,8 +2,6 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    id("com.google.devtools.ksp") // Оставляем для Room
-//    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.serialization") version "1.9.22"
 }
 
@@ -79,7 +77,7 @@ dependencies {
     // Coroutines
     implementation(libs.kotlinx.coroutines.play.services)
 
-    // MediaPipe Hands Solution.
+    // MediaPipe Hands Solution
     implementation("com.google.mediapipe:tasks-vision:0.10.10")
 
     // Kotlin Serialization

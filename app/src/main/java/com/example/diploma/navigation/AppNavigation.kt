@@ -19,7 +19,6 @@ import com.example.diploma.viewmodel.CameraViewModel
 fun MyAppNavigation() {
     val navController = rememberNavController()
 
-    // ViewModel для авторизации
     val authViewModel: AuthViewModel = viewModel()
 
     // Стартовый экран на основе состояния авторизации

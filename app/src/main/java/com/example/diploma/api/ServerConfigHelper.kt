@@ -14,7 +14,7 @@ class ServerConfigHelper(context: Context) {
 
     companion object {
         private const val TAG = "ServerConfigHelper"
-        private const val DEFAULT_SERVER_IP = "192.168.0.103" // можно изменить тут или в приложении
+        private const val DEFAULT_SERVER_IP = "192.168.0.101" // можно изменить тут или в приложении
         private const val DEFAULT_PORT = 5000 // можно изменить тут или в приложении
         private const val KEY_SERVER_IP = "server_ip"
         private const val KEY_SERVER_PORT = "server_port"

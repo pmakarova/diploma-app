@@ -36,7 +36,7 @@ interface UserApiInterface {
 /**
  * Класс для работы с API пользователей
  */
-class UserApiService(private val context: Context) {
+class UserApiService(context: Context) {
     companion object {
         private const val TAG = "UserApiService"
     }

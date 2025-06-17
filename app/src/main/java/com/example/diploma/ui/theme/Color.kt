@@ -1,8 +1,4 @@
 package com.example.diploma.ui.theme
-
-import android.hardware.lights.Light
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 
 // Colors for light scheme
